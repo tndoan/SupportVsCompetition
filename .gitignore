@@ -4,6 +4,7 @@
 UDI_full_Jakarta/*
 UDI_full_Singapore/*
 bin/*
+src/test/*
 .*
 
 # except
