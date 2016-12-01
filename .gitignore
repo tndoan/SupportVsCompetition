@@ -1,0 +1,10 @@
+# ignore list
+*py
+*txt
+UDI_full_Jakarta/*
+UDI_full_Singapore/*
+bin/*
+.*
+
+# except
+!.gitignore
