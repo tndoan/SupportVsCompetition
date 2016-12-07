@@ -21,10 +21,13 @@ public class GradientCalculator {
 	
 	private int k;
 	
+	private boolean isFriend;
+
 	public GradientCalculator(Model model, Parameters params) {
 		this.m = model;
 		this.p = params;
 		this.k = m.getK();
+		this.isFriend = m.isFriend();
 	}
 
 	/**
@@ -93,7 +96,22 @@ public class GradientCalculator {
 		}
 		
 		// TODO: friendship
-		////////////////
+		ArrayList<String> lOfFriends = u.getListOfFriends();
+		if (isFriend && lOfFriends != null) {
+
+			double[] diffFriend = new double[k];
+			for (int i = 0; i < k; i++)
+				diffFriend[i] = 0.0;
+
+			for (String friend : lOfFriends) {
+				UserObject fObj = m.getUserObj(friend);
+				if (fObj == null)
+					continue;
+				double[] fFactors = fObj.getFactors();
+				IntStream.range(0,  k).parallel().forEach(i -> diffFriend[i] += uFactors[i] - fFactors[i]);
+			}
+			IntStream.range(0, k).parallel().forEach(i -> result[i] += p.getLambda_f() * diffFriend[i]);
+		}
 		
 		return result;
 	}

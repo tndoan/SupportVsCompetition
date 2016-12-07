@@ -313,6 +313,8 @@ public class Model {
 						continue;
 					processedUsers.add(fId); // we dont want to process this pair latter
 					UserObject friend = userMap.get(fId);
+					if (friend == null) // for the case of that user does not exist (for ex: users not in training set)
+						continue;
 					double[] diff = Function.minus(uF, friend.getFactors());
 					fReg += Function.innerProduct(diff, diff);
 				}
@@ -409,6 +411,7 @@ public class Model {
 //		double learningRate = 0.00001;
 		double learningRate = 0.000001;
 		
+		int numIter = 0;
 		while(!isConv) {
 			// calculate diff 
 			double diff = 0.0;
@@ -486,9 +489,11 @@ public class Model {
 			// check convergence
 			double curObjFunc = objectiveFunc();
 			System.out.println("Objective function: " + curObjFunc);
-			if (Math.abs(curObjFunc - prevObjFunc) <  0.001 * prevObjFunc) 
+//			if (Math.abs(curObjFunc - prevObjFunc) <  0.1 * prevObjFunc)
+			if (numIter == 20)
 				isConv = true;
 			prevObjFunc = curObjFunc;
+			numIter++;
 		}
 	}
 	

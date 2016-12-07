@@ -9,3 +9,4 @@ src/test/*
 
 # except
 !.gitignore
+/bin/
