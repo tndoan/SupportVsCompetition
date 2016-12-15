@@ -33,22 +33,31 @@ public class GradientCalculator {
 	/**
 	 * 
 	 * @param uId
-	 * @param diff	
 	 * @return
 	 */
-	public double userBias(String uId, double diff) {
+	public double userBias(String uId) {
 		UserObject u = m.getUserObj(uId);
+		double diff = 0.0;
+		Set<String> allVenues = u.getAllVenues();
+		for (String vId : allVenues)
+			diff += m.calculatePredictedCks(uId, vId) - u.retrieveNumCks(vId);
+
 		return diff + u.getBias() * p.getLambda_2();
 	}
 	
 	/**
 	 * 
 	 * @param vId
-	 * @param diff
 	 * @return
 	 */
-	public double venueBias(String vId, double diff) {
+	public double venueBias(String vId) {
 		VenueObject v = m.getVenueObj(vId);
+		double diff = 0.0;
+		ArrayList<String> allUsers = v.getUserIds();
+		for (String uId : allUsers) {
+			double cks = m.getUserObj(uId).retrieveNumCks(vId);
+			diff += m.calculatePredictedCks(uId, vId) - cks;
+		}
 		return diff + v.getBias() * p.getLambda_2();
 	}
 	
@@ -63,17 +72,17 @@ public class GradientCalculator {
 		double[] result = new double[k];
 		System.arraycopy(v.getIFactors(), 0, result, 0, k);
 		IntStream.range(0, k).parallel().forEach(i -> result[i] *= p.getLambda_1());
-		
+
 		ArrayList<String> users = v.getUserIds(); // list of users who make check-ins to this venue
+
 		for (String uId : users) {
 			UserObject u = m.getUserObj(uId);
-			double diff = m.getPredNumCks(uId, vId) - u.retrieveNumCks(vId);
+			double diff = m.calculatePredictedCks(uId, vId) - u.retrieveNumCks(vId);
 			double[] uVector = Arrays.copyOf(u.getFactors(), k);
-			
+
 			IntStream.range(0, k).parallel().forEach(i -> result[i] += uVector[i] * diff);
-			
 		}
-		
+
 		return result;
 	}
 	
@@ -87,7 +96,7 @@ public class GradientCalculator {
 		Set<String> venueIds = u.getAllVenues();
 		for (String venueId : venueIds) {
 			VenueObject v = m.getVenueObj(venueId);
-			double diff = m.getPredNumCks(uId, venueId) - u.retrieveNumCks(venueId);
+			double diff = m.calculatePredictedCks(uId, venueId) - u.retrieveNumCks(venueId);
 			
 			IntStream.range(0, k).parallel().forEach(i -> result[i] += diff * supUserGrad(u, v, i));
 //			for (int i = 0; i < k; i++)
@@ -133,8 +142,8 @@ public class GradientCalculator {
 			
 			double firstPart = alpha * UiQk; // first part
 			if (isSigmoid) {
-				double e = Math.exp(comparison);
-				double temp = - e / ((1.0 + e) * ( 1.0 + e));
+				double e = Math.exp(-comparison);
+				double temp = e / ((1.0 + e) * ( 1.0 + e));
 				firstPart *= temp * (v.getEFactors()[t] - neighbor.getEFactors()[t]);
 			} else 
 				firstPart *= Function.normal(comparison) * (v.getEFactors()[t] - neighbor.getEFactors()[t]);
@@ -159,12 +168,10 @@ public class GradientCalculator {
 			if (Double.isNaN(secondPart))
 				System.out.println(neighborId);
 		}
-		
-		
-		
+
 		result *= m.getBeta() / ((double) neighborIds.size());
 		result += v.getIFactors()[t];
-		
+
 		return result;
 	}
 	
@@ -183,59 +190,77 @@ public class GradientCalculator {
 		ArrayList<String> users = v.getUserIds();
 		for (String uId : users) {
 			UserObject u = m.getUserObj(uId);
-			double diff = m.getPredNumCks(uId, vId) - u.retrieveNumCks(vId);
+			double diff = m.calculatePredictedCks(uId, vId) - u.retrieveNumCks(vId);
 			
-			IntStream.range(0, k).parallel().forEach(i -> result[i] += diff * supEVenueGrad(v, u, i));
+			IntStream.range(0, k).parallel().forEach(i -> result[i] += diff * gradRhatik(v, u, i));
 		}
-		
+
+		ArrayList<String> neighborIds = v.getNeighbors();
+		for (String nId : neighborIds) {
+			VenueObject neighbor = m.getVenueObj(nId);
+			ArrayList<String> usersCksNeighbor = neighbor.getUserIds();
+			for (String uid : usersCksNeighbor) {
+				UserObject u = m.getUserObj(uid);
+				double diff = m.calculatePredictedCks(uid, nId) - u.retrieveNumCks(nId);
+
+				IntStream.range(0, k).parallel()
+						.forEach(i -> result[i] += diff * gradRhatij(neighbor, u, i, v.getEFactors(), vId));
+			}
+		}
+
 		return result;
 	}
 	
-	
-	private double supEVenueGrad(VenueObject v, UserObject u, int t) {
-		int mode = m.getModeSim(); // similarity mode
-		boolean isSigmoid = m.isSigmoid();
+	private double gradRhatij(VenueObject v, UserObject u, int t, double[] Qk, String id) {
+		double[] uFacotrs = u.getFactors();
+		double UiQk = Function.innerProduct(uFacotrs, Qk);
+		double result = m.getAlpha() * UiQk;
+
+		double comparison = Function.innerProduct(uFacotrs, v.getEFactors()) - UiQk;
+
+		double secondPart = 1.0 - m.getAlpha();
+
+		if (m.getModeSim() == ModeSimilarity.COSIN_CKS_SIM)
+			secondPart *= Similarity.cosinCheckinScore(v.getId(), id, m);
+		else if (m.getModeSim() == ModeSimilarity.COSIN_DIST_SIM)
+			secondPart *= Similarity.cosinDistanceScore(id, v.getId(), m);
+		else if (m.getModeSim() == ModeSimilarity.CONSTANT)
+			secondPart *= 1.0;
+
+		if (m.isSigmoid()) {
+			double e = Math.exp(-comparison);
+			result *= (-e) * uFacotrs[t] / ((1 + e) * (1 + e));
+			secondPart += m.getAlpha() * Function.sigmoidFunction(comparison);
+		} else {
+			result *= (-uFacotrs[t] * Function.normal(comparison));
+			secondPart += m.getAlpha() * Function.cdf(comparison);
+		}
+
+		result += secondPart * uFacotrs[t];
+
+		result *= m.getBeta() / (double) v.getNeighbors().size();
+		return result;
+	}
+
+	private double gradRhatik(VenueObject v, UserObject u, int t) {
 		double result = 0.0;
-		double alpha = m.getAlpha();
-		double beta = m.getBeta();
-		
 		ArrayList<String> neighborIds = v.getNeighbors();
 		double[] uFactors = u.getFactors();
-		double UiQj = Function.innerProduct(uFactors, v.getEFactors());
-		for (String neighborId : neighborIds) {
-			VenueObject neighbor = m.getVenueObj(neighborId);
-			double UiQk = Function.innerProduct(uFactors, neighbor.getEFactors());
-			double comparison = UiQj - UiQk;
-			
-			double firstPart = alpha * UiQk;
-			if (isSigmoid) {
-				double e = Math.exp(comparison);
-				double temp = e / ((1.0 + e) * (1.0 + e));
-				firstPart *= temp; 
+
+		for (String nId : neighborIds) {
+			VenueObject neighbor = m.getVenueObj(nId);
+			double UiQy = Function.innerProduct(uFactors, neighbor.getEFactors());
+
+			double comparison = Function.innerProduct(uFactors, v.getEFactors()) - UiQy;
+			if (m.isSigmoid()) {
+				double e = Math.exp(-comparison);
+				result += (uFactors[t] * e * UiQy) / ((1.0 + e) * (1.0 + e)) ;
 			} else {
-				firstPart *= (- Function.normal(comparison));
+				result += Function.normal(comparison) * uFactors[t] * UiQy;
 			}
-			
-			double secondPart = uFactors[t];
-			double sim = 0.0;
-			if (mode == ModeSimilarity.COSIN_CKS_SIM) {
-				sim = Similarity.cosinCheckinScore(neighborId, v.getId(), m);
-			} else if (mode == ModeSimilarity.COSIN_DIST_SIM) {
-				sim = Similarity.cosinDistanceScore(neighborId, v.getId(), m);
-			} else // mode == ModeSimilarity.CONSTANT
-				sim = 1.0;
-			
-			if (isSigmoid) {
-				secondPart *= (alpha * Function.sigmoidFunction(comparison) + (1.0 - alpha) * sim); 
-			} else { // cdf function
-				secondPart *= (alpha * Function.cdf(comparison) + (1.0 - alpha) * sim);
-			}
-			
-			result += firstPart + secondPart;
 		}
-		
-		result *= beta / ((double) neighborIds.size());
-		
+
+		result *= m.getBeta() * m.getAlpha() / (double) neighborIds.size();
 		return result;
 	}
 }
