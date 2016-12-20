@@ -109,11 +109,6 @@ public class Model {
 	 * key is user id, value is the map whose key is venue id, value is the number of check-in between user and venue
 	 */
 	private HashMap<String, HashMap<String, Double>> cksMap;
-	
-	/**
-	 * similar to cksMap but it stores the prediction between user and venue
-	 */
-	private HashMap<String, HashMap<String, Double>> predCksMap;
 
 	/**
 	 * create model
@@ -143,92 +138,74 @@ public class Model {
 		this.beta = beta;
 		this.isFriend = isFriend;
 		this.params = params;
-		
+
 		// initialize 
 		venueMap = new HashMap<>();
 		userMap = new HashMap<>();
-		
+
 		// read data from files
 		HashMap<String, String> vInfo = ReadFile.readLocation(vFile);
-		
+
 		HashMap<String, String> uInfo = new HashMap<>(); 
 		if (uFile != null)
 			uInfo = ReadFile.readLocation(uFile);
-		
+
 		HashMap<String, ArrayList<String>> neighborsInfo = ReadFile.readNeighbors(nFile);
-		
+
 		HashMap<String, ArrayList<String>> friendInfo = new HashMap<>();
-		// TODO: friendship here
+
 		if (isFriend)
 			friendInfo = ReadFile.readFriendship(fFile);			
-		
+
 		this.cksMap = ReadFile.readNumCksFile(cksFile);
-		predCksMap = initialziePred();
-		
+
 		HashMap<String, ArrayList<String>> userOfVenueMap = Utils.collectUsers(cksMap);
-		
+
 		this.mu = calculateMu(cksMap);
-		
+
 		Set<String> allUsers = cksMap.keySet();
 		if (uFile != null)
 			allUsers = uInfo.keySet();
-		
+
 		// making user objects
 		for(String userId : allUsers){
-			
 			// parse the location of users
 			PointObject location = null;
 			if (uFile != null) {
 				String locInfo = uInfo.get(userId); // in this context, we know the location of every users
 				location = new PointObject(locInfo);
 			}
-			
+
 			HashMap<String, Double> checkinMap = cksMap.get(userId);
 
 			UserObject uo = new UserObject(userId, location, checkinMap, k, friendInfo.get(userId));
 			userMap.put(userId, uo);
 		}
-		
+
 		// making venue objects
 		for (String venueId : vInfo.keySet()) {
 			// location
 			String locInfo = vInfo.get(venueId);
 			PointObject location = new PointObject(locInfo);
-			
+
 			// users who cks in this venue
 			ArrayList<String> users = userOfVenueMap.get(venueId);
-			
+
 			if (users == null)
 				continue; // we dont care this case because this venue has no check-ins
 			
 			// total number of cks
 			int cks = 0;
-			for (String user : users) {
+			for (String user : users) 
 				cks += userMap.get(user).retrieveNumCks(venueId);
-			}
-			
+
 			// neighbors
 			ArrayList<String> neighbors = neighborsInfo.get(venueId);
+			
 			
 			VenueObject vo = new VenueObject(venueId, cks, location, neighbors, users, k);
 			venueMap.put(venueId, vo);
 		}
-	}
-	
-	/**
-	 * initialize the prediction map
-	 * @return
-	 */
-	private HashMap<String, HashMap<String, Double>> initialziePred() {
-		HashMap<String, HashMap<String, Double>> result = new HashMap<>();
-		for (String userId : cksMap.keySet()) {
-			HashMap<String, Double> sub = new HashMap<>();
-			HashMap<String, Double> venueM = cksMap.get(userId);
-			for (String venueId : venueM.keySet())
-				sub.put(venueId, 0.0);
-			result.put(userId, sub);
-		}
-		return result;
 	}
 	
 	/**
@@ -247,7 +224,7 @@ public class Model {
 				totalPairs++;
 			}
 		}
-		
+
 		return totalCks / totalPairs;
 	}
 
@@ -266,7 +243,7 @@ public class Model {
 				result += diff * diff;
 			}
 		}
-		
+
 		return result;
 	}
 	
@@ -332,7 +309,7 @@ public class Model {
 	 * @param vId	venue id
 	 * @return		predicted number of check-ins between them
 	 */
-	private double calculatePredictedCks(String uId, String vId) {
+	public double calculatePredictedCks(String uId, String vId) {
 		VenueObject v = venueMap.get(vId);
 		UserObject u = userMap.get(uId);
 		
@@ -386,46 +363,15 @@ public class Model {
 		return venueMap.get(vId);
 	}
 	
-	/**
-	 * 
-	 * @param uId
-	 * @param vId
-	 * @return
-	 */
-	public double getPredNumCks(String uId, String vId) {
-		HashMap<String, Double> uM = predCksMap.get(uId);
-		if (uM == null)
-			return 0.0;
-		Double d = uM.get(vId);
-		if (d == null)
-			return 0.0;
-		return d;
-	}
-	
-	// TODO
 	public void optimization() {
 		double prevObjFunc = 0.0;
 		boolean isConv = false;
-		
+
 		GradientCalculator gc = new GradientCalculator(this, params);
-//		double learningRate = 0.00001;
-		double learningRate = 0.000001;
+		double learningRate = 0.001;
 		
 		int numIter = 0;
 		while(!isConv) {
-			// calculate diff 
-			double diff = 0.0;
-			for (String uId : cksMap.keySet()) {
-				HashMap<String, Double> uM = cksMap.get(uId);
-				HashMap<String, Double> puM = predCksMap.get(uId);
-				for (String vId : uM.keySet()) {
-					double numCks = uM.get(vId);
-					Double pred = puM.get(vId);
-					if (pred == null)
-						continue;
-					diff += (pred - numCks);
-				}
-			}
 			
 			// update user
 			for (String userId : userMap.keySet()) {
@@ -433,7 +379,7 @@ public class Model {
 				
 				// update bias
 				double bias = uo.getBias();
-				double grad = gc.userBias(userId, diff);
+				double grad = gc.userBias(userId);
 				uo.setBias(bias - learningRate * grad);
 				
 				// update user vector
@@ -443,20 +389,13 @@ public class Model {
 				
 			}
 			
-//			UserObject uo = getUserObj("1380522");
-//			double[] f = uo.getFactors();
-//			System.out.println("Bias:" + uo.getBias());
-//			for (int i = 0; i < k; i++)
-//				System.out.println(f[i]);
-//			System.out.println("=====");
-			
 			// update venue
 			for (String venueId : venueMap.keySet()) {
 				VenueObject vo = getVenueObj(venueId);
 				
 				// update bias
 				double bias = vo.getBias();
-				double grad = gc.venueBias(venueId, diff);
+				double grad = gc.venueBias(venueId);
 				vo.setBias(bias - learningRate * grad);
 				
 				// update intrinsic characters
@@ -470,27 +409,10 @@ public class Model {
 				vo.setEFactors(Function.minus(eVector, Function.multiply(learningRate, eGrad)));
 			}
 			
-			// update prediction
-			for (String uId : cksMap.keySet()) {
-				HashMap<String, Double> uM = cksMap.get(uId);
-				HashMap<String, Double> puM = predCksMap.get(uId);
-				
-				if (puM == null) {
-					puM = new HashMap<>();
-					predCksMap.put(uId, puM);
-				}
-				
-				for (String vId : uM.keySet()) {
-					double pred = calculatePredictedCks(uId, vId);
-					puM.put(vId, pred);
-				}
-			}
-			
 			// check convergence
 			double curObjFunc = objectiveFunc();
 			System.out.println("Objective function: " + curObjFunc);
-//			if (Math.abs(curObjFunc - prevObjFunc) <  0.1 * prevObjFunc)
-			if (numIter == 20)
+			if ((Math.abs(curObjFunc - prevObjFunc) <  0.001 * prevObjFunc) || numIter == 20)
 				isConv = true;
 			prevObjFunc = curObjFunc;
 			numIter++;
@@ -532,42 +454,37 @@ public class Model {
 			sb.append(vo.getBias() + "," + Arrays.toString(vo.getEFactors()) + "," + Arrays.toString(vo.getIFactors()));
 			result.add(sb.toString());
 		}
-		
+
 		//write to file
 		Utils.writeFile(result, fname);
 	}
-	
+
 	public void test() {
-		UserObject u = this.getUserObj("1380522");
-//		VenueObject v = this.getVenueObj("4cb949aad78f4688e18cb573");
-		
-		u.setFactors(new double[]{0, 1.0, 2.0, 3.0, 64.0, 125.0, 6.0, 27.0, 108.0, 659.0});
-//		v.setIFactors(new double[]{0, 1.0, 2.0, 3.0, 6124.0, 125.0, 6.0, 27.0, 18.0, 659.0});
 		GradientCalculator g = new GradientCalculator(this, params);
-				
-		double[] gg = g.userGrad("1380522");
-//		double[] gg = g.iVenueGrad("4b795c18f964a520b3f52ee3");
-		for (int i = 0; i < k; i++)
-			System.out.println(gg[i]);
+
+		VenueObject v = this.getVenueObj("1");
+		v.setEFactors(new double[]{1.0, 2.0, 3.0, 4.0, 5.0});
+		double[] gg = g.eVenueGrad("1");
+
 		System.out.println("--------------");
-		System.out.println(gg[4]);
 		
-		u.setFactors(new double[]{0, 1.0 , 2.0, 3.0, 64.0 + 0.0001, 125.0, 6.0, 27.0, 108.0, 659.0});
-//		v.setIFactors(new double[]{0, 1.0, 2.0, 3.0, 6124.0 + 0.0001, 125.0, 6.0, 27.0, 18.0, 659.0});
+		double eps = 0.0001;
+		v.setEFactors(new double[]{1.0, 2.0, 3.0 + eps, 4.0, 5.0});
 		double f1 = 0.5 * objectiveFunc();
-//		double f1 = 0.5 * calculateRMSE();
 		
-		u.setFactors(new double[]{0, 1.0 , 2.0, 3.0, 64.0 - 0.0001, 125.0, 6.0, 27.0, 108.0, 659.0});
-//		v.setIFactors(new double[]{0, 1.0, 2.0, 3.0, 6124.0 - 0.0001, 125.0, 6.0, 27.0, 18.0, 659.0});
+		v.setEFactors(new double[]{1.0, 2.0, 3.0 - eps, 4.0, 5.0});
 		double f2 = 0.5 * objectiveFunc();
-//		double f2 = 0.5 * calculateRMSE();
-		System.out.println( (f1 - f2) / (2 * 0.0001));
 		
+		double diff = (f1 - f2) / (2 * eps) - gg[2];
+		System.out.println(diff);
+
+		System.out.println("==============");
 	}
-	
-	public static void main(String[] args) {
+
+
+	public static void main(String[] args) throws UnsupportedEncodingException, FileNotFoundException, IOException {
 		System.setProperty("java.util.concurrent.ForkJoinPool.common.parallelism", "13");
-		
+
 		// test gradient
 //		String uFile = "UDI_full_Jakarta/full_user_profiles";
 //		String vFile = "UDI_full_Jakarta/full_venue_profiles";
@@ -575,25 +492,33 @@ public class Model {
 //		String fFile = null;
 //		String cksFile = "UDI_full_Jakarta/full_cks.txt";
 //		
-////		String uFile = "UDI_full_Singapore/full_user_profiles";
-////		String vFile = "UDI_full_Singapore/full_venue_profiles";
-////		String nFile = "UDI_full_Singapore/s_neighbor_10";
-////		String fFile = null;
-////		String cksFile = "UDI_full_Singapore/full_cks.txt";
-//		
-//		boolean isSigmoid = false;
+//		String uFile = "UDI_full_Singapore/refine/full_user_profiles";
+//		String vFile = "UDI_full_Singapore/refine/full_venue_profiles";
+//		String nFile = "UDI_full_Singapore/refine/s_neighbor_10";
+//		String fFile = null;
+//		String cksFile = "UDI_full_Singapore/refine/full_cks.txt";
+
+		String uFile = "test_data/u.txt";
+		String vFile = "test_data/v.txt";
+		String nFile = "test_data/neighbor";
+		String fFile = null;
+		String cksFile = "test_data/cks.txt";
+		
+		boolean isSigmoid = false;
 //		int modeSim = ModeSimilarity.COSIN_CKS_SIM;
-////		int modeSim = ModeSimilarity.COSIN_DIST_SIM;
-//		int k = 5;
-//		double alpha = 0.1;
-//		double beta = 0.1;
-//		boolean isFriend = false;
-//		Parameters params = new Parameters(0.01, 0.01, 0.01, 0.01);
-//		Model m = new Model(uFile, vFile, nFile, fFile, cksFile, isSigmoid, modeSim, k, 
-//						alpha, beta, isFriend, params);
-////		m.test();
+		int modeSim = ModeSimilarity.COSIN_DIST_SIM;
+		int k = 5;
+		double alpha = 0.5;
+		double beta = 0.0;
+		boolean isFriend = false;
+		Parameters params = new Parameters(0.01, 0.01, 0.01, 0.01);
+//		Parameters params = new Parameters(0.0, 0.0, 0.0, 0.0);
+		Model m = new Model(uFile, vFile, nFile, fFile, cksFile, isSigmoid, modeSim, k, 
+						alpha, beta, isFriend, params);
+		m.test();
 //		m.optimization();
-		double[] x = new double[]{1, 2, 3};
-		System.out.println(Arrays.toString(x));
+//		m.savePrediction("test_data/result.txt");
+//		double[] x = new double[]{1, 2, 3};
+//		System.out.println(Arrays.toString(x));
 	}
 }
