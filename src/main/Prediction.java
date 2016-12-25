@@ -16,90 +16,16 @@ import java.util.Set;
 import object.PointObject;
 import object.UserObject;
 import object.VenueObject;
-import utils.Function;
 import utils.ReadFile;
-import utils.Similarity;
 import utils.Utils;
 
-public class Prediction {
-	private HashMap<String, UserObject> userMap;
-	private HashMap<String, VenueObject> venueMap;
-	
-	/**
-	 * isSigmoid = true => sigmoid function
-	 * isSigmoid = false => CDF function
-	 */
-	private boolean isSigmoid;
-	
-	public boolean isSigmoid() {
-		return isSigmoid;
-	}
+public class Prediction extends Model{
 
-	/**
-	 * modeSim is in class ModeSimilarity class
-	 */
-	private int modeSim;
-	
-	public int getModeSim() {
-		return modeSim;
-	}
-
-	/**
-	 * beta parameter (refer the paper)
-	 */
-	private double beta;
-	
-	/**
-	 * get value of beta parameter
-	 * @return
-	 */
-	public double getBeta() {
-		return beta;
-	}
-
-	/**
-	 * alpha parameter (refer the paper)
-	 */
-	private double alpha;
-	
-	/**
-	 * get value of alpha parameter
-	 * @return
-	 */
-	public double getAlpha() {
-		return alpha;
-	}
-
-	/**
-	 * number of latent factors
-	 */
-	private int k;
-	
-	public int getK() {
-		return k;
-	}
-		
-	/**
-	 * indicate if we want to use friendship to model objective function 
-	 */
-	private boolean isFriend;
-	
-	public boolean isFriend() {
-		return isFriend;
-	}
-	
-	private HashMap<String, HashMap<String, Double>> cksMap;
-
-	/**
-	 * average number of check-ins in the training data
-	 */
-	private double mu;
-	
 	private HashMap<String, HashMap<String, Double>> gt;
 	
 	public Prediction(String outputFName, String uFile, String vFile, String nFile, String fFile, String cksFile, String groundTruthFName) 
 			throws FileNotFoundException, IOException{
-
+		
 		// initialize
 		venueMap = new HashMap<>();
 		userMap = new HashMap<>();
@@ -244,55 +170,14 @@ public class Prediction {
 		isFriend = Boolean.parseBoolean(fInfo[1]);
 		
 		// lambda
-//		double lambda1 = Double.parseDouble(comp[6].split("=")[1]);
-//		double lambda2 = Double.parseDouble(comp[7].split("=")[1]);
-//		double lambda3 = Double.parseDouble(comp[8].split("=")[1]);
-//		double lambdaf = Double.parseDouble(comp[9].split("=")[1]);
-//		params = new Parameters(lambda1, lambda2, lambda3, lambdaf);
+		double lambda1 = Double.parseDouble(comp[6].split("=")[1]);
+		double lambda2 = Double.parseDouble(comp[7].split("=")[1]);
+		double lambda3 = Double.parseDouble(comp[8].split("=")[1]);
+		double lambdaf = Double.parseDouble(comp[9].split("=")[1]);
+		params = new Parameters(lambda1, lambda2, lambda3, lambdaf);
 		
 		// mu
 		mu = Double.parseDouble(comp[10].split("=")[1]);
-	}
-	
-	/**
-	 * given user and venue id. Predict the number of check-ins between them using our model
-	 * WARNING: It is the copy of the same name function from Model.java
-	 * @param uId	user id
-	 * @param vId	venue id
-	 * @return		predicted number of check-ins between them
-	 */
-	private double calculatePredictedCks(UserObject u, VenueObject v) {
-		String vId = v.getId();
-		double innerProdOfUV = Function.innerProduct(v.getIFactors(), u.getFactors());
-		double result = mu + v.getBias() + u.getBias() + innerProdOfUV;
-		
-		double s = 0.0;
-		ArrayList<String> neighbors = v.getNeighbors();
-		for (String nId : neighbors) {
-			VenueObject neighbor = venueMap.get(nId);
-			double similarity = 0.0; double competition = 0.0;
-			double innerProdOfU_eV = Function.innerProduct(u.getFactors(), v.getEFactors());
-			double innerProdOfUN = Function.innerProduct(u.getFactors(), neighbor.getEFactors());
-			
-			if (isSigmoid) // competition 
-				competition = Function.sigmoidFunction(innerProdOfU_eV - innerProdOfUN);
-			else
-				competition = Function.cdf(innerProdOfU_eV - innerProdOfUN);
-			
-			if (modeSim == ModeSimilarity.COSIN) // similarity (spatial homophily)  
-				similarity = Similarity.cosinVector(v.getEFactors(), neighbor.getEFactors());
-			else if (modeSim == ModeSimilarity.COSIN_CKS_SIM)
-				similarity = Similarity.cosinCheckinsScore(vId, nId, venueMap, userMap);
-			else if (modeSim == ModeSimilarity.COSIN_DIST_SIM)
-				similarity = Similarity.cosinDistanceScore(vId, nId, venueMap, userMap);
-			else //if (modeSim == ModeSimilarity.CONSTANT)
-				similarity = 1.0;
-						
-			s += (alpha * competition + (1 - alpha) * similarity) * innerProdOfUN;
-		}
-		
-		double numberOfNeighbors = (double) neighbors.size();
-		return result + (beta / numberOfNeighbors) * s;
 	}
 	
 	public void metricOfSIGIR2014() { // see the paper sigir 2014 
@@ -307,7 +192,7 @@ public class Prediction {
 				VenueObject v = venueMap.get(venueId);
 				if (u == null || v == null)
 					continue;
-				double pred = calculatePredictedCks(u, v);
+				double pred = calculatePredictedCks(userId, venueId);
 				double actual = g.get(venueId);
 				count += 1.0;
 				
@@ -356,9 +241,7 @@ public class Prediction {
 			ArrayList<PairObject> list = new ArrayList<>();
 			
 			for (String venueId : venueMap.keySet()) {
-				UserObject u = userMap.get(userId);
-				VenueObject v = venueMap.get(venueId);
-				double pred = calculatePredictedCks(u, v);
+				double pred = calculatePredictedCks(userId, venueId);
 				list.add(new PairObject(venueId, pred));
 			}
 			Set<String> groundTruth = gt.get(userId).keySet();

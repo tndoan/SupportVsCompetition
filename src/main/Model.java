@@ -25,7 +25,7 @@ public class Model {
 	 * isSigmoid = true => sigmoid function
 	 * isSigmoid = false => CDF function
 	 */
-	private boolean isSigmoid;
+	protected boolean isSigmoid;
 	
 	public boolean isSigmoid() {
 		return isSigmoid;
@@ -34,7 +34,7 @@ public class Model {
 	/**
 	 * modeSim is in class ModeSimilarity class
 	 */
-	private int modeSim;
+	protected int modeSim;
 	
 	public int getModeSim() {
 		return modeSim;
@@ -43,7 +43,7 @@ public class Model {
 	/**
 	 * beta parameter (refer the paper)
 	 */
-	private double beta;
+	protected double beta;
 	
 	/**
 	 * get value of beta parameter
@@ -56,7 +56,7 @@ public class Model {
 	/**
 	 * alpha parameter (refer the paper)
 	 */
-	private double alpha;
+	protected double alpha;
 	
 	/**
 	 * get value of alpha parameter
@@ -69,7 +69,7 @@ public class Model {
 	/**
 	 * number of latent factors
 	 */
-	private int k;
+	protected int k;
 	
 	public int getK() {
 		return k;
@@ -78,12 +78,12 @@ public class Model {
 	/**
 	 * contains all regularization parameters
 	 */
-	private Parameters params;
+	protected Parameters params;
 	
 	/**
 	 * indicate if we want to use friendship to model objective function 
 	 */
-	private boolean isFriend;
+	protected boolean isFriend;
 	
 	public boolean isFriend() {
 		return isFriend;
@@ -92,23 +92,25 @@ public class Model {
 	/**
 	 * average number of check-ins in the training data
 	 */
-	private double mu;
+	protected double mu;
 	
 	/**
 	 * key is venue id, value is venue object corresponding to the venue id
 	 */
-	private HashMap<String, VenueObject> venueMap;
+	protected HashMap<String, VenueObject> venueMap;
 	
 	/**
 	 * key is user id, value is user object corresponding to user id
 	 */
-	private HashMap<String, UserObject> userMap;
+	protected HashMap<String, UserObject> userMap;
 	
 	/**
 	 * check-in map of training
 	 * key is user id, value is the map whose key is venue id, value is the number of check-in between user and venue
 	 */
-	private HashMap<String, HashMap<String, Double>> cksMap;
+	protected HashMap<String, HashMap<String, Double>> cksMap;
+	
+	public Model(){} // add this to remove the error of construction in Prediction.java
 
 	/**
 	 * create model
