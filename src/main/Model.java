@@ -208,6 +208,9 @@ public class Model {
 			VenueObject vo = new VenueObject(venueId, cks, location, neighbors, users, k);
 			venueMap.put(venueId, vo);
 		}
+
+		// initialize the similarity cache
+		Similarity.initialize();
 	}
 	
 	/**
@@ -334,9 +337,9 @@ public class Model {
 			if (modeSim == ModeSimilarity.COSIN) // similarity (spatial homophily)  
 				similarity = Similarity.cosinVector(v.getEFactors(), neighbor.getEFactors());
 			else if (modeSim == ModeSimilarity.COSIN_CKS_SIM)
-				similarity = Similarity.cosinCheckinsScore(vId, nId, venueMap, userMap);
+				similarity = Similarity.cosinCheckinScore(vId, nId, this);
 			else if (modeSim == ModeSimilarity.COSIN_DIST_SIM)
-				similarity = Similarity.cosinDistanceScore(vId, nId, venueMap, userMap);
+				similarity = Similarity.cosinDistanceScore(vId, nId, this);
 			else //if (modeSim == ModeSimilarity.CONSTANT)
 				similarity = 1.0;
 						
