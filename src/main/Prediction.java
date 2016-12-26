@@ -17,6 +17,7 @@ import object.PointObject;
 import object.UserObject;
 import object.VenueObject;
 import utils.ReadFile;
+import utils.Similarity;
 import utils.Utils;
 
 public class Prediction extends Model{
@@ -83,6 +84,7 @@ public class Prediction extends Model{
 		}
 		
 		gt = readGroundTruth(groundTruthFName);
+		Similarity.initialize();
 	}
 	
 	private VenueObject parseVenue(String venueId, String info, PointObject location, ArrayList<String> neighbor, ArrayList<String> users) {
